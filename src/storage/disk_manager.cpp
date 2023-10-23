@@ -1,15 +1,16 @@
-#include "storage/disk_manager.h"
+#include "storage/disk_manager.h"   //意思是引入storage文件夹下的disk_manager.h头文件
 
 #include <assert.h>    // for assert
 #include <string.h>    // for memset
 #include <sys/stat.h>  // for stat
 #include <unistd.h>    // for lseek
 
-#include "defs.h"
+#include "defs.h" //跟makefile相关的，不用管
 
 DiskManager::DiskManager() { memset(fd2pageno_, 0, MAX_FD * (sizeof(std::atomic<page_id_t>) / sizeof(char))); }
 
 /**
+ * 已完成
  * @description: 将数据写入文件的指定磁盘页面中
  * @param {int} fd 磁盘文件的文件句柄
  * @param {page_id_t} page_no 写入目标页面的page_id
@@ -19,11 +20,16 @@ DiskManager::DiskManager() { memset(fd2pageno_, 0, MAX_FD * (sizeof(std::atomic<
 void DiskManager::write_page(int fd, page_id_t page_no, const char *offset, int num_bytes) {
     // Todo:
     // 1.lseek()定位到文件头，通过(fd,page_no)可以定位指定页面及其在磁盘文件中的偏移量
+    lseek(fd, page_no * PAGE_SIZE, SEEK_SET);
     // 2.调用write()函数
+    int writeSize = write(fd, offset, num_bytes);
+    if (writeSize != num_bytes)
+        throw InternalError("DiskManager::write_page Error");
     // 注意write返回值与num_bytes不等时 throw InternalError("DiskManager::write_page Error");
 }
 
 /**
+ * 已完成
  * @description: 读取文件中指定编号的页面中的部分数据到内存中
  * @param {int} fd 磁盘文件的文件句柄
  * @param {page_id_t} page_no 指定的页面编号
@@ -33,11 +39,16 @@ void DiskManager::write_page(int fd, page_id_t page_no, const char *offset, int 
 void DiskManager::read_page(int fd, page_id_t page_no, char *offset, int num_bytes) {
     // Todo:
     // 1.lseek()定位到文件头，通过(fd,page_no)可以定位指定页面及其在磁盘文件中的偏移量
+    lseek(fd, page_no * PAGE_SIZE, SEEK_SET);
     // 2.调用read()函数
+    int readSize = read(fd, offset, num_bytes);
+    if (readSize != num_bytes)
+        throw InternalError("DiskManager::read_page Error");
     // 注意read返回值与num_bytes不等时，throw InternalError("DiskManager::read_page Error");
 }
 
 /**
+ * 已完成
  * @description: 分配一个新的页号
  * @return {page_id_t} 分配的新页号
  * @param {int} fd 指定文件的文件句柄
@@ -71,6 +82,7 @@ void DiskManager::destroy_dir(const std::string &path) {
 }
 
 /**
+ * 已完成（官方）
  * @description: 判断指定路径文件是否存在
  * @return {bool} 若指定路径文件存在则返回true 
  * @param {string} &path 指定路径文件
@@ -82,6 +94,7 @@ bool DiskManager::is_file(const std::string &path) {
 }
 
 /**
+ * 已完成
  * @description: 用于创建指定路径文件
  * @return {*}
  * @param {string} &path
@@ -90,9 +103,16 @@ void DiskManager::create_file(const std::string &path) {
     // Todo:
     // 调用open()函数，使用O_CREAT模式
     // 注意不能重复创建相同文件
+    if (!is_file(path)) {
+        umask(0000);
+        int fd = open(path.c_str(), O_CREAT, 0777);
+        close(fd); //经过测试，如果不手动关闭的话，创建一个不存在的文件后此文件会一直处于open状态
+    }
+    else throw FileExistsError(path);
 }
 
 /**
+ * 已完成
  * @description: 删除指定路径的文件
  * @param {string} &path 文件所在路径
  */
@@ -100,10 +120,15 @@ void DiskManager::destroy_file(const std::string &path) {
     // Todo:
     // 调用unlink()函数
     // 注意不能删除未关闭的文件
+    if (!is_file(path)) throw FileNotFoundError(path);
+    if (path2fd_[path] == 0) //如果该文件没打开
+        unlink(path.c_str());
+    else throw FileNotClosedError(path);
 }
 
 
 /**
+ * 已完成
  * @description: 打开指定路径文件 
  * @return {int} 返回打开的文件的文件句柄
  * @param {string} &path 文件所在路径
@@ -111,21 +136,39 @@ void DiskManager::destroy_file(const std::string &path) {
 int DiskManager::open_file(const std::string &path) {
     // Todo:
     // 调用open()函数，使用O_RDWR模式
-    // 注意不能重复打开相同文件，并且需要更新文件打开列表
+    // 注意不能重复打开相同文件
+    // 更新文件打开列表
+    if (!is_file(path)) throw FileNotFoundError(path);
+    if (path2fd_[path] == 0) {
+        int fd = open(path.c_str(), O_RDWR);
+        path2fd_[path] = fd;
+        fd2path_[fd] = path;
+        return fd;
+    }
+    else throw FileNotClosedError(path);
 }
 
 /**
+ * 已完成
  * @description:用于关闭指定路径文件 
  * @param {int} fd 打开的文件的文件句柄
  */
 void DiskManager::close_file(int fd) {
     // Todo:
     // 调用close()函数
-    // 注意不能关闭未打开的文件，并且需要更新文件打开列表
+    // 注意不能关闭未打开的文件
+    // 更新文件打开列表
+    if (fd2path_[fd] != "") {    //说明该文件正被打开
+        close(fd);
+        path2fd_[fd2path_[fd]] = 0;
+        fd2path_[fd] = "";
+    }
+    else throw FileNotOpenError(fd);
 }
 
 
 /**
+ * 已完成（官方）
  * @description: 获得文件的大小
  * @return {int} 文件的大小
  * @param {string} &file_name 文件名
@@ -137,6 +180,7 @@ int DiskManager::get_file_size(const std::string &file_name) {
 }
 
 /**
+ * 已完成（官方）
  * @description: 根据文件句柄获得文件名
  * @return {string} 文件句柄对应文件的文件名
  * @param {int} fd 文件句柄
@@ -149,6 +193,7 @@ std::string DiskManager::get_file_name(int fd) {
 }
 
 /**
+ * 已完成（官方）
  * @description:  获得文件名对应的文件句柄
  * @return {int} 文件句柄
  * @param {string} &file_name 文件名
@@ -162,6 +207,7 @@ int DiskManager::get_file_fd(const std::string &file_name) {
 
 
 /**
+ * 已完成（官方）
  * @description:  读取日志文件内容
  * @return {int} 返回读取的数据量，若为-1说明读取数据的起始位置超过了文件大小
  * @param {char} *log_data 读取内容到log_data中
@@ -188,6 +234,7 @@ int DiskManager::read_log(char *log_data, int size, int offset) {
 
 
 /**
+ * 已完成（官方）
  * @description: 写日志内容
  * @param {char} *log_data 要写入的日志内容
  * @param {int} size 要写入的内容大小
