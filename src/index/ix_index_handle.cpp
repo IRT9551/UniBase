@@ -89,7 +89,7 @@ bool IxNodeHandle::leaf_lookup(const char *key, Rid **value) {
     auto it = lower_bound(key);
     //2
     if(it != page_hdr->num_key){
-        value = get_rid(it);
+        *value = get_rid(it);
     }
 
     return false;
