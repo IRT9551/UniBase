@@ -13,7 +13,27 @@ int IxNodeHandle::lower_bound(const char *target) const {
     // 查找当前节点中第一个大于等于target的key，并返回key的位置给上层
     // 提示: 可以采用多种查找方式，如顺序遍历、二分查找等；使用ix_compare()函数进行比较
 
-    return -1;
+    int left = 0;
+    int right = page_hdr->num_key;
+
+    while (left <= right) {
+        int mid = (left + right) / 2;
+        int cmp = ix_compare(target, get_key(mid), file_hdr->col_types_, file_hdr->col_lens_);
+
+        if (cmp == 0) {
+            // 找到了等于target的key，直接返回索引
+            return mid;
+        } else if (cmp < 0) {
+            // target小于当前节点的key，继续在左侧查找
+            right = mid - 1;
+        } else {
+            // target大于当前节点的key，继续在右侧查找
+            left = mid + 1;
+        }
+    }
+
+    // 如果没有找到等于target的key，返回最接近target且大于它的key的位置
+    return page_hdr->num_key;
 }
 
 /**
@@ -27,7 +47,27 @@ int IxNodeHandle::upper_bound(const char *target) const {
     // 查找当前节点中第一个大于target的key，并返回key的位置给上层
     // 提示: 可以采用多种查找方式：顺序遍历、二分查找等；使用ix_compare()函数进行比较
 
-    return -1;
+    int left = 0;
+    int right = page_hdr->num_key;
+
+    while (left <= right) {
+        int mid = (left + right) / 2;
+        int cmp = ix_compare(target, get_key(mid), file_hdr->col_types_, file_hdr->col_lens_);
+
+        if (cmp == 0) {
+            // 找到了等于target的key，直接返回索引
+            return mid;
+        } else if (cmp < 0) {
+            // target小于当前节点的key，继续在右侧查找
+            right = mid + 1;
+        } else {
+            // target大于当前节点的key，继续在左侧查找
+            left = mid - 1;
+        }
+    }
+
+    // 如果没有找到等于target的key，返回最接近target且大于它的key的位置
+    return page_hdr->num_key;
 }
 
 /**
@@ -44,6 +84,13 @@ bool IxNodeHandle::leaf_lookup(const char *key, Rid **value) {
     // 2. 判断目标key是否存在
     // 3. 如果存在，获取key对应的Rid，并赋值给传出参数value
     // 提示：可以调用lower_bound()和get_rid()函数。
+
+    //1
+    auto it = lower_bound(key);
+    //2
+    if(it != page_hdr->num_key){
+        value = get_rid(it);
+    }
 
     return false;
 }
