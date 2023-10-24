@@ -52,8 +52,8 @@ void BufferPoolManager::update_page(Page *page, PageId new_page_id, frame_id_t n
     page_table_[new_page_id] = new_frame_id;
 
     // 重置页面数据并更新页面ID
-    page->id_ = new_page_id;
     page->reset_memory();
+    page->id_ = new_page_id;
 }
 
 /**
@@ -99,6 +99,8 @@ Page* BufferPoolManager::fetch_page(PageId page_id) {
     // 从磁盘读取目标页到缓冲池
     disk_manager_->read_page(page_id.fd, page_id.page_no, page->get_data(), PAGE_SIZE); //?
 
+    page_table_[page_id] = frame_id;
+    page->id_ = page_id;
 
     replacer_->pin(frame_id);
     page->pin_count_=1;
@@ -173,7 +175,7 @@ bool BufferPoolManager::flush_page(PageId page_id) {
 
     // 1. 在页表中查找目标页
     auto it = page_table_.find(page_id);
-    if (it == page_table_.end()) {
+    if (it == page_table_.end() || page_id.page_no == INVALID_PAGE_ID) {
         // 1.1 目标页不在页表中，返回false
         return false;
     }
@@ -183,7 +185,7 @@ bool BufferPoolManager::flush_page(PageId page_id) {
     Page* page = &pages_[frame_id];
 
     // 2. 无论P是否为脏页，都将其写回磁盘
-    disk_manager_->write_page(page->get_page_id().fd, page->get_page_id().page_no, page->get_data(), PAGE_SIZE);
+    disk_manager_->write_page(page_id.fd, page_id.page_no, page->get_data(), PAGE_SIZE);
 
     // 3. 更新P的is_dirty_标志
     page->is_dirty_ = false;
@@ -204,6 +206,9 @@ Page* BufferPoolManager::new_page(PageId* page_id) {
     // 5.   返回获得的page
    
    // 1. 获取一个可用的帧，如果不可用则返回nullptr
+
+    std::scoped_lock lock{latch_};
+
     frame_id_t frame_id;
     if (!find_victim_page(&frame_id)) {
         return nullptr;
@@ -240,6 +245,9 @@ bool BufferPoolManager::delete_page(PageId page_id) {
     // 3.   将目标页数据写回磁盘，从页表中删除目标页，重置其元数据，将其加入free_list_，返回true
     
     // 1. 在page_table_中查找目标页，若不存在返回true
+
+    std::scoped_lock lock{latch_};
+
     auto it = page_table_.find(page_id);
     if (it == page_table_.end()) {
         return true;
@@ -259,6 +267,7 @@ bool BufferPoolManager::delete_page(PageId page_id) {
 
     page_table_.erase(it);
     page->reset_memory();
+    page_id.page_no = INVALID_PAGE_ID; //?
     replacer_->unpin(frame_id);
     free_list_.push_back(frame_id);
 
@@ -271,11 +280,13 @@ bool BufferPoolManager::delete_page(PageId page_id) {
  */
 void BufferPoolManager::flush_all_pages(int fd) {
     for (auto& pair : page_table_) {
-        frame_id_t frame_id = pair.second;
-        Page* page = &pages_[frame_id];
-        if (page->get_page_id().fd == fd && page->is_dirty()) {
-            disk_manager_->write_page(page->get_page_id().fd, page->get_page_id().page_no, page->get_data(), PAGE_SIZE);
-            page->is_dirty_ = false;
-        }
+        flush_page(pair.first);
+        // frame_id_t frame_id = pair.second;
+        // Page* page = &pages_[frame_id];
+        // if (page->get_page_id().fd == fd && page->is_dirty()) {
+        //     disk_manager_->write_page(page->get_page_id().fd, page->get_page_id().page_no, page->get_data(), PAGE_SIZE);
+        //     page->is_dirty_ = false;
+        // }
+        // flush_page(page->get_page_id());
     }
 }
