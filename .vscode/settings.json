@@ -69,5 +69,6 @@
         "variant": "cpp",
         "cstdarg": "cpp",
         "iomanip": "cpp"
-    }
+    },
+    "cmake.configureOnOpen": false
 }

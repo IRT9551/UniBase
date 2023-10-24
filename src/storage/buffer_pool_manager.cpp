@@ -45,13 +45,15 @@ void BufferPoolManager::update_page(Page *page, PageId new_page_id, frame_id_t n
         disk_manager_->write_page(page->get_page_id().fd, page->get_page_id().page_no, page->get_data(), PAGE_SIZE);
         page->is_dirty_ = false;
     }
+    page->pin_count_ = 0;
 
     // 更新页表
+    page_table_.erase(page->get_page_id());
     page_table_[new_page_id] = new_frame_id;
 
     // 重置页面数据并更新页面ID
-    page->reset_memory();
     page->id_ = new_page_id;
+    page->reset_memory();
 }
 
 /**
@@ -91,22 +93,15 @@ Page* BufferPoolManager::fetch_page(PageId page_id) {
     Page* page = &pages_[frame_id];
     // 2.     若获得的可用frame存储的为dirty page，则须调用updata_page将page写回到磁盘
     if (page->is_dirty()) {
-        update_page(page, page_id, page_id.fd);
-        // page->pin_count_ = 1;
-        page->is_dirty_ = false;
+        update_page(page, page_id, frame_id);
     }
 
     // 从磁盘读取目标页到缓冲池
-    disk_manager_->read_page(page->get_page_id().fd, page->get_page_id().page_no, page->get_data(), PAGE_SIZE);
+    disk_manager_->read_page(page_id.fd, page_id.page_no, page->get_data(), PAGE_SIZE); //?
 
-    // 更新页表和pin_count
-    page_table_[page_id] = frame_id;
+
     replacer_->pin(frame_id);
     page->pin_count_=1;
-
-    // 更新页面元数据
-    // page->reset_memory();
-    page->id_ = page_id;
 
     return page;
 }
@@ -143,7 +138,7 @@ bool BufferPoolManager::unpin_page(PageId page_id, bool is_dirty) {
     Page* page = &pages_[frame_id];
 
     // 检查pin_count
-    if (page->pin_count_ <= 0) {
+    if (page->pin_count_ == 0) {
         return false;  // pin_count已经为0，无法取消固定
     }
 
@@ -151,11 +146,12 @@ bool BufferPoolManager::unpin_page(PageId page_id, bool is_dirty) {
     page->pin_count_--;
     if (page->pin_count_ == 0) {
         replacer_->unpin(frame_id);
-        // delete_page(page_id);
     }
 
     // 根据参数更新is_dirty
-    page->is_dirty_ = is_dirty;
+    if(is_dirty){
+        page->is_dirty_ = true;
+    }
 
     return true;
 }
@@ -214,16 +210,19 @@ Page* BufferPoolManager::new_page(PageId* page_id) {
     }
 
     // 2. 为与fd关联的文件分配一个新的page_id
-    (*page_id).page_no = disk_manager_->allocate_page((*page_id).fd);
+    page_id->page_no = disk_manager_->allocate_page(page_id->fd);
 
     // 3. 将帧的数据写回磁盘
-    if (pages_[frame_id].is_dirty_) {
+    if (pages_[frame_id].is_dirty()) {
         disk_manager_->write_page(pages_[frame_id].get_page_id().fd, pages_[frame_id].get_page_id().page_no, pages_[frame_id].get_data(), PAGE_SIZE);
+        pages_[frame_id].is_dirty_ = false;
     }
 
     // 4. 固定帧并更新pin_count_
     replacer_->pin(frame_id);
     pages_[frame_id].pin_count_ = 1;
+
+    pages_[frame_id].id_ = *page_id;
 
     // 5. 返回获取到的页
     page_table_[*page_id] = frame_id;
