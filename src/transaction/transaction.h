@@ -5,6 +5,7 @@
 #include <string>
 #include <thread>
 #include <unordered_set>
+#include <memory>
 
 #include "txn_defs.h"
 
