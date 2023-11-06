@@ -70,5 +70,8 @@
         "cstdarg": "cpp",
         "iomanip": "cpp"
     },
-    "cmake.configureOnOpen": false
+    "cmake.configureOnOpen": false,
+    "C_Cpp.errorSquiggles": "enabled",
+    "C_Cpp.intelliSenseEngine":"default",
+    "editor.suggest.snippetsPreventQuickSuggestions": true
 }

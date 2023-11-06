@@ -36,25 +36,36 @@ void check_equal(const RmFileHandle *file_handle,
     for (auto &entry : mock) {
         Rid rid = entry.first;
         auto mock_buf = (char *)entry.second.c_str();
+        //printf("get_record start\n");
         auto rec = file_handle->get_record(rid, context);
+        //printf("get_record FIN\n");
         assert(memcmp(mock_buf, rec->data, file_handle->file_hdr_.record_size) == 0);
     }
     // Randomly get record
     for (int i = 0; i < 10; i++) {
+        //printf("This round %d file_handle->file_hdr_.num_pages is %d\n",i,file_handle->file_hdr_.num_pages);
         Rid rid = {.page_no = 1 + rand() % (file_handle->file_hdr_.num_pages - 1),
                    .slot_no = rand() % file_handle->file_hdr_.num_records_per_page};
         bool mock_exist = mock.count(rid) > 0;
+        //printf("Is_record strat\n");
         bool rm_exist = file_handle->is_record(rid);
+        //printf("is_record_FIN\n");
         assert(rm_exist == mock_exist);
     }
     // Test RM scan
+    //printf("scan start\n");
     size_t num_records = 0;
     for (RmScan scan(file_handle); !scan.is_end(); scan.next()) {
         assert(mock.count(scan.rid()) > 0);
+        //printf("scan.get_record start\n");
         auto rec = file_handle->get_record(scan.rid(), context);
+        //printf("scan.get_record FIN\n");
+        //printf("%d %d %d\n",scan.rid().page_no,scan.rid().slot_no,num_records);
         assert(memcmp(rec->data, mock.at(scan.rid()).c_str(), file_handle->file_hdr_.record_size) == 0);
         num_records++;
     }
+    //printf("scan FIN\n");
+    //printf("scan FIN %d %d\n",num_records,mock.size());
     assert(num_records == mock.size());
 }
 
@@ -86,11 +97,11 @@ TEST(RecordManagerTest, SimpleTest) {
     int record_size = 4 + rand() % 256;  // 元组大小随便设置，只要不超过RM_MAX_RECORD_SIZE
     // test files
     {
-        // 删除残留的同名文件
+        //删除残留的同名文件
         if (disk_manager->is_file(filename)) {
             disk_manager->destroy_file(filename);
         }
-        // 将file header写入到磁盘中的filename文件
+        //将file header写入到磁盘中的filename文件
         rm_manager->create_file(filename, record_size);
         // 将磁盘中的filename文件读出到内存中的file handle的file header
         std::unique_ptr<RmFileHandle> file_handle = rm_manager->open_file(filename);
@@ -121,24 +132,33 @@ TEST(RecordManagerTest, SimpleTest) {
     size_t upd_cnt = 0;
     size_t del_cnt = 0;
     for (int round = 0; round < 1000; round++) {
+        //std::cout<<"round"<< round << '\n';
         double insert_prob = 1. - mock.size() / 250.;
         double dice = rand() * 1. / RAND_MAX;
         if (mock.empty() || dice < insert_prob) {
+            //std::cout<<"iffffffffffffff"<< round << '\n';
+            //printf("insert\n");
             rand_buf(file_handle->file_hdr_.record_size, write_buf);
             Rid rid = file_handle->insert_record(write_buf, context);
+            //printf("insert %d %d\n",rid.page_no,rid.slot_no);
             mock[rid] = std::string((char *)write_buf, file_handle->file_hdr_.record_size);
             add_cnt++;
+            //std::cout<<"iffffffffffffff"<< round << '\n';
             //            std::cout << "insert " << rid << '\n'; // operator<<(cout,rid)
-        } else {
+        } 
+        else {
             // update or erase random rid
+            //std::cout<<"elseeeeeeeeeeeeeeeeeeeee"<< round << '\n';
             int rid_idx = rand() % mock.size();
             auto it = mock.begin();
             for (int i = 0; i < rid_idx; i++) {
                 it++;
             }
             auto rid = it->first;
+            //printf("update or delete %d %d\n",rid.page_no,rid.slot_no);
             if (rand() % 2 == 0) {
                 // update
+                //printf("update\n");
                 rand_buf(file_handle->file_hdr_.record_size, write_buf);
                 file_handle->update_record(rid, write_buf, context);
                 mock[rid] = std::string((char *)write_buf, file_handle->file_hdr_.record_size);
@@ -146,9 +166,11 @@ TEST(RecordManagerTest, SimpleTest) {
                 //                std::cout << "update " << rid << '\n';
             } else {
                 // erase
+                //printf("erase\n");
                 file_handle->delete_record(rid, context);
                 mock.erase(rid);
                 del_cnt++;
+                //printf("erase FIN\n");
                 //                std::cout << "delete " << rid << '\n';
             }
         }
@@ -158,6 +180,7 @@ TEST(RecordManagerTest, SimpleTest) {
             file_handle = rm_manager->open_file(filename);
         }
         check_equal(file_handle.get(), mock);
+        //printf("round %d FIN\n",round);
     }
     assert(mock.size() == add_cnt - del_cnt);
     std::cout << "insert " << add_cnt << '\n' << "delete " << del_cnt << '\n' << "update " << upd_cnt << '\n';

@@ -16,5 +16,5 @@ public:
 
     Rid rid() const override;
 
-    Rid find_first_record() const override;
+    Rid find_first_record() const ;
 };
