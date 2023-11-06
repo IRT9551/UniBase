@@ -53,7 +53,7 @@ int IxNodeHandle::upper_bound(const char *target) const {
     while (left <= right) {
         int mid = (left + right) / 2;
         int cmp = ix_compare(target, get_key(mid), file_hdr->col_types_, file_hdr->col_lens_);
-
+    
         if (cmp == 0) {
             // 找到了等于target的key，直接返回索引
             return mid;
@@ -90,8 +90,8 @@ bool IxNodeHandle::leaf_lookup(const char *key, Rid **value) {
     //2
     if(it != page_hdr->num_key){
         *value = get_rid(it);
+        return true;
     }
-
     return false;
 }
 
@@ -106,7 +106,23 @@ page_id_t IxNodeHandle::internal_lookup(const char *key) {
     // 2. 获取该孩子节点（子树）所在页面的编号
     // 3. 返回页面编号
 
-    return -1;
+    if(is_leaf_page()){
+        throw IndexEntryNotFoundError();
+    }
+    
+    int child_index = -1;
+    int num_key = get_size();
+    for(int i=0; i<num_key; i++){
+        if (ix_compare(key, get_key(i), file_hdr->col_types_[i], file_hdr->col_lens_[i]) < 0) {
+            // key 比当前关键字小，应该进入子树 i
+            child_index = i;
+            break;
+        }
+    }
+    if(child_index == -1){
+        child_index = num_key - 1;
+    }
+    return child_index;
 }
 
 /**
